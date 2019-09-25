@@ -24,7 +24,7 @@ attributes = {'gender_pair' : bias.fetch_seed_pairs_vocab(), 'gender':bias.fetch
 bias2short = {'gender_pair' : 'gp', 'gender' : 'gen', 'race' : 'race', 'religion' : 'rel', 'adjectives' : 'adj', 'professions' : 'prof'}
 neutrals = {'adjectives' : bias.fetch_adjectives(), 'professions' : bias.fetch_professions()}
 dataset_lens = {'gender_pair' : 400, 'gender' : 794, 'race': 1120, 'religion' : 660, 'adjectives' : 8256, 'professions' : 5679}	
-name2long = {'bertsm' : 'BERT-12', 'gpt2sm' : 'GPT2-12', 'robertasm' : 'RoBERTa-12', 'xlnetsm' : 'XLNet-12', 'distilbertsm': 'DistilBERT-6', 'bertlg' : 'BERT-24',  'gpt2lg' : 'GPT2-24', 'robertalg' : 'RoBERTa-24', 'xlnetlg' : 'XLNet-24',}
+name2long = {'word2vec' : 'word2vec', 'GloVe': 'GloVe', 'bertsm' : 'BERT-12', 'gpt2sm' : 'GPT2-12', 'robertasm' : 'RoBERTa-12', 'xlnetsm' : 'XLNet-12', 'distilbertsm': 'DistilBERT-6', 'bertlg' : 'BERT-24',  'gpt2lg' : 'GPT2-24', 'robertalg' : 'RoBERTa-24', 'xlnetlg' : 'XLNet-24',}
 server = False
 path_prefix = ''
 
@@ -111,12 +111,11 @@ def submission_visualize(model_name, cont_scores, decont_scores, layers, decont_
 	fig.suptitle(name2long[model_name])
 	plt.legend(legend_keys)
 	plt.show()
-	# exit()
 
 
 def submission_repr_quality_figures():
 	RG65, WS353, SL999, SV3500, vocab, word_counts = data.fetch_wordsim_datasets(path_prefix)
-	for model_name in tqdm(['gpt2sm', 'bertlg', 'gpt2lg']):
+	for model_name in tqdm(['xlnetsm', 'xlnetlg']):
 		n = 100000
 		dataset = data.fetch_pooling_dataset(path_prefix, 'wikipedia_utf8_filtered_20pageviews.csv', 1000000, pickled=True, filter_vocab=vocab)
 		dataset = dataset[:n]
@@ -128,9 +127,7 @@ def submission_repr_quality_figures():
 			layers = 24
 		decont_embeddings, decont_embedding_keys = transformers.compute_decontextual(model_name, vocab, path_prefix='', pickled=True)
 		decont_scores = scorer.score_decontextualized(decont_embeddings, layers, RG65, WS353, SL999, SV3500, decont_embedding_keys)
-		# if 'gpt' == model_name[:3] or 'bert' == model_name[:4]:
-		# 	cont_embeddings, cont_embedding_keys = transformers.compute_contextual(dataset, model_name, vocab, path_prefix='', uniform='', pickled=True)
-		# else:
+
 		cont_embeddings, cont_embedding_keys = transformers.compute_contextual(dataset, model_name, vocab, path_prefix='', uniform='', pickled=True)
 		cont_embeddings = fix_backups(cont_embeddings, decont_embeddings, vocab, cont_embedding_keys, layers)
 		cont_scores, bests = scorer.score_contextualized(cont_embeddings, layers, RG65, WS353, SL999, SV3500, cont_embedding_keys)
@@ -140,9 +137,8 @@ def submission_repr_quality_figures():
 
 def submission_repr_quality_tables():
 	RG65, WS353, SL999, SV3500, vocab, word_counts = data.fetch_wordsim_datasets(path_prefix)
-	for model_name in tqdm(['xlnetsm', 'xlnetlg']):
-		dataset = data.fetch_pooling_dataset(path_prefix, 'wikipedia_utf8_filtered_20pageviews.csv', 1000000, pickled=True, filter_vocab=vocab)
-		cont_embeddings, cont_embedding_keys = transformers.compute_contextual(dataset, model_name, vocab, path_prefix='', uniform='', pickled=False)
+	initial_dataset = data.fetch_pooling_dataset(path_prefix, 'wikipedia_utf8_filtered_20pageviews.csv', 1000000, pickled=True, filter_vocab=vocab)
+	for model_name in tqdm(['xlnetlg']):
 		print('midrule')
 		if 'distil' in model_name:
 			layers = 6
@@ -151,21 +147,22 @@ def submission_repr_quality_tables():
 		else:
 			layers = 24
 		decont_embeddings, _ = transformers.compute_decontextual(model_name, vocab, path_prefix='', pickled=True)
-		for n in ([10000]): # 50000, 100000, 500000, 1000000
-			dataset = data.fetch_pooling_dataset(path_prefix, 'wikipedia_utf8_filtered_20pageviews.csv', 1000000, pickled=True, filter_vocab=vocab)
-			dataset = dataset[:n]
+		for n in ([10000, 50000, 100000, 500000, 1000000]):
+			dataset = initial_dataset[:n]
 			cont_embeddings, cont_embedding_keys = transformers.compute_contextual(dataset, model_name, vocab, path_prefix='', uniform='', pickled=True)
 
 			layer_choice = layers // 4
 			cont_embeddings = fix_backups(cont_embeddings, decont_embeddings, vocab, cont_embedding_keys, layers)
 			cont_scores, bests = scorer.score_contextualized(cont_embeddings, layers, RG65, WS353, SL999, SV3500, cont_embedding_keys)
+
 			RG65_l, RG65_s = bests['RG65']
 			WS353_l, WS353_s = bests['WS353']
 			SL999_l, SL999_s = bests['SL999']
 			SV3500_l, SV3500_s = bests['SV3500']
-			# print(bests)
+
 			print('{} & {} & {} ({}) & {} ({}) & {} ({}) & {} ({})  \\\\'.format(name2long[model_name], n, RG65_s, RG65_l, WS353_s, WS353_l, SL999_s, SL999_l, SV3500_s, SV3500_l))
 		print('bottomrule')
+		exit()
 
 
 def submission_bias_figures():
@@ -175,7 +172,7 @@ def submission_bias_figures():
 	cont_embedding_keys = [(a,b) for a in macro_pool_keys for b in micro_pool_keys]
 	cartesian = [(a, n) for a in attributes.keys() for n in neutrals.keys()]
 	macro_vocab = {w for (attribute, neutral) in cartesian for w in (attributes[attribute] | neutrals[neutral])}
-	for model_name in tqdm(['bertsm', 'gpt2sm', 'robertasm', 'distilbertsm', 'bertlg', 'gpt2lg', 'robertalg']):
+	for model_name in tqdm(['xlnetlg']):
 		if 'distil' in model_name:
 			layers = 6
 		elif 'sm' in model_name:
@@ -193,11 +190,11 @@ def submission_bias_figures():
 		N_attribute, V_attribute = dataset_lens[attribute], len(attribute_vocab)
 		N_neutral, V_neutral = dataset_lens[neutral], len(neutral_vocab)
 
-		attribute_embeddings =  pickle.load(open(model_name + attribute + '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_attribute,V_attribute), 'rb'))
+		attribute_embeddings =  pickle.load(open(model_name + '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_attribute,V_attribute), 'rb'))
 		decont_embeddings, _ = transformers.compute_decontextual(model_name, attribute_vocab, path_prefix='', pickled=True)
 		attribute_embeddings = fix_backups(attribute_embeddings, decont_embeddings, attribute_vocab, cont_embedding_keys, layers)
 
-		neutral_embeddings =  pickle.load(open(model_name + neutral + '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_neutral,V_neutral), 'rb')) 
+		neutral_embeddings =  pickle.load(open(model_name + '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_neutral,V_neutral), 'rb')) 
 		decont_embeddings, _ = transformers.compute_decontextual(model_name, neutral_vocab, path_prefix='', pickled=True)
 		neutral_embeddings = fix_backups(neutral_embeddings, decont_embeddings, neutral_vocab, cont_embedding_keys, layers)
 
@@ -221,11 +218,11 @@ def submission_bias_figures():
 		N_attribute, V_attribute = dataset_lens[attribute], len(attribute_vocab)
 		N_neutral, V_neutral = dataset_lens[neutral], len(neutral_vocab)
 
-		attribute_embeddings =  pickle.load(open(model_name + attribute + '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_attribute,V_attribute), 'rb'))
+		attribute_embeddings =  pickle.load(open(model_name + '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_attribute,V_attribute), 'rb'))
 		decont_embeddings, _ = transformers.compute_decontextual(model_name, attribute_vocab, path_prefix='', pickled=True)
 		attribute_embeddings = fix_backups(attribute_embeddings, decont_embeddings, attribute_vocab, cont_embedding_keys, layers)
 
-		neutral_embeddings =  pickle.load(open(model_name + neutral + '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_neutral,V_neutral), 'rb')) 
+		neutral_embeddings =  pickle.load(open(model_name + '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_neutral,V_neutral), 'rb')) 
 		decont_embeddings, _ = transformers.compute_decontextual(model_name, neutral_vocab, path_prefix='', pickled=True)
 		neutral_embeddings = fix_backups(neutral_embeddings, decont_embeddings, neutral_vocab, cont_embedding_keys, layers)
 
@@ -253,11 +250,11 @@ def submission_bias_figures():
 		N_attribute, V_attribute = dataset_lens[attribute], len(attribute_vocab)
 		N_neutral, V_neutral = dataset_lens[neutral], len(neutral_vocab)
 
-		attribute_embeddings =  pickle.load(open(model_name + attribute + '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_attribute,V_attribute), 'rb'))
+		attribute_embeddings =  pickle.load(open(model_name +  '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_attribute,V_attribute), 'rb'))
 		decont_embeddings, _ = transformers.compute_decontextual(model_name, attribute_vocab, path_prefix='', pickled=True)
 		attribute_embeddings = fix_backups(attribute_embeddings, decont_embeddings, attribute_vocab, cont_embedding_keys, layers)
 
-		neutral_embeddings =  pickle.load(open(model_name + neutral + '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_neutral,V_neutral), 'rb')) 
+		neutral_embeddings =  pickle.load(open(model_name + '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_neutral,V_neutral), 'rb')) 
 		decont_embeddings, _ = transformers.compute_decontextual(model_name, neutral_vocab, path_prefix='', pickled=True)
 		neutral_embeddings = fix_backups(neutral_embeddings, decont_embeddings, neutral_vocab, cont_embedding_keys, layers)
 
@@ -279,11 +276,11 @@ def submission_bias_figures():
 		N_attribute, V_attribute = dataset_lens[attribute], len(attribute_vocab)
 		N_neutral, V_neutral = dataset_lens[neutral], len(neutral_vocab)
 
-		attribute_embeddings =  pickle.load(open(model_name + attribute + '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_attribute,V_attribute), 'rb'))
+		attribute_embeddings =  pickle.load(open(model_name + '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_attribute,V_attribute), 'rb'))
 		decont_embeddings, _ = transformers.compute_decontextual(model_name, attribute_vocab, path_prefix='', pickled=True)
 		attribute_embeddings = fix_backups(attribute_embeddings, decont_embeddings, attribute_vocab, cont_embedding_keys, layers)
 
-		neutral_embeddings =  pickle.load(open(model_name + neutral + '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_neutral,V_neutral), 'rb')) 
+		neutral_embeddings =  pickle.load(open(model_name + '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_neutral,V_neutral), 'rb')) 
 		decont_embeddings, _ = transformers.compute_decontextual(model_name, neutral_vocab, path_prefix='', pickled=True)
 		neutral_embeddings = fix_backups(neutral_embeddings, decont_embeddings, neutral_vocab, cont_embedding_keys, layers)
 
@@ -308,11 +305,11 @@ def submission_bias_figures():
 		N_attribute, V_attribute = dataset_lens[attribute], len(attribute_vocab)
 		N_neutral, V_neutral = dataset_lens[neutral], len(neutral_vocab)
 
-		attribute_embeddings =  pickle.load(open(model_name + attribute + '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_attribute,V_attribute), 'rb'))
+		attribute_embeddings =  pickle.load(open(model_name + '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_attribute,V_attribute), 'rb'))
 		decont_embeddings, _ = transformers.compute_decontextual(model_name, attribute_vocab, path_prefix='', pickled=True)
 		attribute_embeddings = fix_backups(attribute_embeddings, decont_embeddings, attribute_vocab, cont_embedding_keys, layers)
 
-		neutral_embeddings =  pickle.load(open(model_name + neutral + '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_neutral,V_neutral), 'rb')) 
+		neutral_embeddings =  pickle.load(open(model_name + '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_neutral,V_neutral), 'rb')) 
 		decont_embeddings, _ = transformers.compute_decontextual(model_name, neutral_vocab, path_prefix='', pickled=True)
 		neutral_embeddings = fix_backups(neutral_embeddings, decont_embeddings, neutral_vocab, cont_embedding_keys, layers)
 
@@ -330,11 +327,11 @@ def submission_bias_figures():
 		N_attribute, V_attribute = dataset_lens[attribute], len(attribute_vocab)
 		N_neutral, V_neutral = dataset_lens[neutral], len(neutral_vocab)
 
-		attribute_embeddings =  pickle.load(open(model_name + attribute + '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_attribute,V_attribute), 'rb'))
+		attribute_embeddings =  pickle.load(open(model_name + '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_attribute,V_attribute), 'rb'))
 		decont_embeddings, _ = transformers.compute_decontextual(model_name, attribute_vocab, path_prefix='', pickled=True)
 		attribute_embeddings = fix_backups(attribute_embeddings, decont_embeddings, attribute_vocab, cont_embedding_keys, layers)
 
-		neutral_embeddings =  pickle.load(open(model_name + neutral + '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_neutral,V_neutral), 'rb')) 
+		neutral_embeddings =  pickle.load(open(model_name + '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_neutral,V_neutral), 'rb')) 
 		decont_embeddings, _ = transformers.compute_decontextual(model_name, neutral_vocab, path_prefix='', pickled=True)
 		neutral_embeddings = fix_backups(neutral_embeddings, decont_embeddings, neutral_vocab, cont_embedding_keys, layers)
 
@@ -356,11 +353,11 @@ def submission_bias_figures():
 		N_attribute, V_attribute = dataset_lens[attribute], len(attribute_vocab)
 		N_neutral, V_neutral = dataset_lens[neutral], len(neutral_vocab)
 
-		attribute_embeddings =  pickle.load(open(model_name + attribute + '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_attribute,V_attribute), 'rb'))
+		attribute_embeddings =  pickle.load(open(model_name +  '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_attribute,V_attribute), 'rb'))
 		decont_embeddings, _ = transformers.compute_decontextual(model_name, attribute_vocab, path_prefix='', pickled=True)
 		attribute_embeddings = fix_backups(attribute_embeddings, decont_embeddings, attribute_vocab, cont_embedding_keys, layers)
 
-		neutral_embeddings =  pickle.load(open(model_name + neutral + '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_neutral,V_neutral), 'rb')) 
+		neutral_embeddings =  pickle.load(open(model_name + '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_neutral,V_neutral), 'rb')) 
 		decont_embeddings, _ = transformers.compute_decontextual(model_name, neutral_vocab, path_prefix='', pickled=True)
 		neutral_embeddings = fix_backups(neutral_embeddings, decont_embeddings, neutral_vocab, cont_embedding_keys, layers)
 
@@ -382,11 +379,11 @@ def submission_bias_figures():
 		N_attribute, V_attribute = dataset_lens[attribute], len(attribute_vocab)
 		N_neutral, V_neutral = dataset_lens[neutral], len(neutral_vocab)
 
-		attribute_embeddings =  pickle.load(open(model_name + attribute + '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_attribute,V_attribute), 'rb'))
+		attribute_embeddings =  pickle.load(open(model_name + '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_attribute,V_attribute), 'rb'))
 		decont_embeddings, _ = transformers.compute_decontextual(model_name, attribute_vocab, path_prefix='', pickled=True)
 		attribute_embeddings = fix_backups(attribute_embeddings, decont_embeddings, attribute_vocab, cont_embedding_keys, layers)
 
-		neutral_embeddings =  pickle.load(open(model_name + neutral + '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_neutral,V_neutral), 'rb')) 
+		neutral_embeddings =  pickle.load(open(model_name + '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_neutral,V_neutral), 'rb')) 
 		decont_embeddings, _ = transformers.compute_decontextual(model_name, neutral_vocab, path_prefix='', pickled=True)
 		neutral_embeddings = fix_backups(neutral_embeddings, decont_embeddings, neutral_vocab, cont_embedding_keys, layers)
 
@@ -416,87 +413,56 @@ def submission_bias_tables():
 	cont_embedding_keys = [(a,b) for a in macro_pool_keys for b in micro_pool_keys]
 	cartesian = [(a, n) for a in attributes.keys() for n in neutrals.keys()]
 	macro_vocab = {w for (attribute, neutral) in cartesian for w in (attributes[attribute] | neutrals[neutral])}
-	for model_name in ['GloVe', 'word2vec']:
+	for model_name in (['word2vec', 'GloVe']): #bertsm', 'bertlg', 'gpt2sm', 'gpt2lg', 'robertasm', 'robertalg', 'xlnetsm', 'xlnetlg', 'distilbertsm']):
 		bias_list = []
 		if model_name == 'GloVe':
 			embeddings, w2i, i2w = data.fetch_glove_embeddings(path_prefix, pickled=True)
-		if model_name == 'word2vec':
-			embeddings = data.fetch_word2vec_embeddings(path_prefix, macro_vocab, pickled=False)
-		for attribute, neutral in cartesian:
-			attribute_vocab = attributes[attribute]
-			neutral_vocab = neutrals[neutral]
-			N_attribute, V_attribute = dataset_lens[attribute], len(attribute_vocab)
-			N_neutral, V_neutral = dataset_lens[neutral], len(neutral_vocab)	
-
-			if model_name == 'GloVe':
-				attribute_embeddings, neutral_embeddings = {w : embeddings[w2i[w]] for w in attribute_vocab}, {w : embeddings[w2i[w]] for w in neutral_vocab}
-			if model_name == 'word2vec':
-				attribute_embeddings = {w : embeddings[w] for w in attribute_vocab}
-				neutral_embeddings = {w : embeddings[w] for w in neutral_vocab}
-
-			if attribute == 'gender_pair':
-				bias_bolukbasi, bias_garg_euc, bias_garg_cos, bias_manzini = bias.compute_all_biases(attribute_embeddings, neutral_embeddings, attribute_vocab, neutral_vocab, gender_pair=True, classes=2, A1=None, A2=None, A_list=None)
-				# biases[(bias2short[attribute], bias2short[neutral])].append('boluk: ' + str(bias_bolukbasi))
-				# biases[(bias2short[attribute], bias2short[neutral])].append('g_euc: ' + str(bias_garg_euc))
-				# biases[(bias2short[attribute], bias2short[neutral])].append('g_cos: ' + str(bias_garg_cos))
-				bias_list.extend([bias_bolukbasi, bias_garg_euc, bias_garg_cos, bias_manzini])
-			
-			elif attribute == 'race':
-				A_list = [class2words[c] for c in {'white', 'hispanic', 'asian'}]
-				bias_bolukbasi, bias_garg_euc, bias_garg_cos, bias_manzini = bias.compute_all_biases(attribute_embeddings, neutral_embeddings, attribute_vocab, neutral_vocab, gender_pair=False, classes=3, A1=None, A2=None, A_list=A_list)
-				bias_list.extend([bias_manzini])
-			else:
-				if attribute == 'gender':
-					A_list = [class2words[c] for c in {'male', 'female'}]
-					A1, A2 = A_list
-			
-				elif attribute == 'religion':
-					A_list = [class2words[c] for c in {'islam', 'christian'}]
-					A1, A2 = A_list
-			
-				else:
-					raise NotImplementedError
-				bias_bolukbasi, bias_garg_euc, bias_garg_cos, bias_manzini = bias.compute_all_biases(attribute_embeddings, neutral_embeddings, attribute_vocab, neutral_vocab, gender_pair=False, classes=2, A1=A1, A2=A2, A_list=A_list)
-				bias_list.extend([bias_garg_euc, bias_garg_cos, bias_manzini])
-		bias_list = [str(round(i, 4)) for i in bias_list]
-		print(model_name + ' & ' + ' & '.join(bias_list) +' \\\\')
-	exit()
-	for model_name in tqdm(['bertsm', 'gpt2sm', 'robertasm', 'distilbertsm', 'bertlg', 'gpt2lg', 'robertalg']):
-		cartesian = [(a, n) for a in attributes.keys() for n in neutrals.keys()]
-		biases = {(bias2short[a], bias2short[n]) : [] for (a,n) in cartesian}
-		bias_list = []
-		for attribute, neutral in cartesian:
-			attribute_vocab = attributes[attribute]
-			neutral_vocab = neutrals[neutral]
-			N_attribute, V_attribute = dataset_lens[attribute], len(attribute_vocab)
-			N_neutral, V_neutral = dataset_lens[neutral], len(neutral_vocab)
+		elif model_name == 'word2vec':
+			embeddings = data.fetch_word2vec_embeddings(path_prefix, macro_vocab, pickled=True)
+		else:
 			if 'distil' in model_name:
 				layers = 6
 			elif 'sm' in model_name:
 				layers = 12
 			else:
 				layers = 24
-			layer = layers // 4 # chosen layer in paper's figures
+		for attribute in attributes:
+			neutral = 'adjectives'
+			attribute_vocab = attributes[attribute]
+			neutral_vocab = neutrals[neutral]
+			N_attribute, V_attribute = dataset_lens[attribute], len(attribute_vocab)
+			N_neutral, V_neutral = dataset_lens[neutral], len(neutral_vocab)	
+			
+			if model_name == 'GloVe':
+				attribute_embeddings, neutral_embeddings = {w : embeddings[w2i[w]] for w in attribute_vocab}, {w : embeddings[w2i[w]] for w in neutral_vocab}
+			elif model_name == 'word2vec':
+				attribute_embeddings = {w : embeddings[w] for w in attribute_vocab}
+				neutral_embeddings = {w : embeddings[w] for w in neutral_vocab}
+			else:
+				layer = layers // 4 # chosen layer in paper's tables
+				if 'xlnet' in model_name:
+					attribute_embeddings =  pickle.load(open(model_name + '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_attribute,V_attribute), 'rb'))
+				else:
+					attribute_embeddings =  pickle.load(open(model_name + attribute + '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_attribute,V_attribute), 'rb'))
+				decont_embeddings, _ = transformers.compute_decontextual(model_name, attribute_vocab, path_prefix='', pickled=True)
+				attribute_embeddings = fix_backups(attribute_embeddings, decont_embeddings, attribute_vocab, cont_embedding_keys, layers)
+				attribute_embeddings = {w : attribute_embeddings[w][layer]['mean']['vec_mean'].numpy() for w in attribute_embeddings} # analyze f = mean, g = mean
 
-			attribute_embeddings =  pickle.load(open(model_name + attribute + '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_attribute,V_attribute), 'rb'))
-			decont_embeddings, _ = transformers.compute_decontextual(model_name, attribute_vocab, path_prefix='', pickled=True)
-			attribute_embeddings = fix_backups(attribute_embeddings, decont_embeddings, attribute_vocab, cont_embedding_keys, layers)
-			attribute_embeddings = {w : attribute_embeddings[w][layer]['mean']['vec_mean'].numpy() for w in attribute_embeddings} # analyze f = mean, g = mean
 
-
-			neutral_embeddings =  pickle.load(open(model_name + neutral + '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_neutral,V_neutral), 'rb')) 
-			decont_embeddings, _ = transformers.compute_decontextual(model_name, neutral_vocab, path_prefix='', pickled=True)
-			neutral_embeddings = fix_backups(neutral_embeddings, decont_embeddings, neutral_vocab, cont_embedding_keys, layers)
-			neutral_embeddings = {w : neutral_embeddings[w][layer]['mean']['vec_mean'].numpy() for w in neutral_embeddings} # analyze f = mean, g = mean
-
-
+				if 'xlnet' in model_name:
+					neutral_embeddings=  pickle.load(open(model_name + '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_neutral, V_neutral), 'rb'))
+				else:
+					neutral_embeddings =  pickle.load(open(model_name + neutral + '.{}_sents.vocab_size={}.contextualized.pickle'.format(N_neutral, V_neutral), 'rb'))
+				decont_embeddings, _ = transformers.compute_decontextual(model_name, neutral_vocab, path_prefix='', pickled=True)
+				neutral_embeddings = fix_backups(neutral_embeddings, decont_embeddings, neutral_vocab, cont_embedding_keys, layers)
+				neutral_embeddings = {w : neutral_embeddings[w][layer]['mean']['vec_mean'].numpy() for w in neutral_embeddings} # analyze f = mean, g = mean
+			
 			if attribute == 'gender_pair':
 				bias_bolukbasi, bias_garg_euc, bias_garg_cos, bias_manzini = bias.compute_all_biases(attribute_embeddings, neutral_embeddings, attribute_vocab, neutral_vocab, gender_pair=True, classes=2, A1=None, A2=None, A_list=None)
-				biases[(bias2short[attribute], bias2short[neutral])].append('boluk: ' + str(bias_bolukbasi))
-				biases[(bias2short[attribute], bias2short[neutral])].append('g_euc: ' + str(bias_garg_euc))
-				biases[(bias2short[attribute], bias2short[neutral])].append('g_cos: ' + str(bias_garg_cos))
+				# biases[(bias2short[attribute], bias2short[neutral])].append('boluk: ' + str(bias_bolukbasi))
+				# biases[(bias2short[attribute], bias2short[neutral])].append('g_euc: ' + str(bias_garg_euc))
+				# biases[(bias2short[attribute], bias2short[neutral])].append('g_cos: ' + str(bias_garg_cos))
 				bias_list.extend([bias_bolukbasi, bias_garg_euc, bias_garg_cos, bias_manzini])
-			
 			elif attribute == 'race':
 				A_list = [class2words[c] for c in {'white', 'hispanic', 'asian'}]
 				bias_bolukbasi, bias_garg_euc, bias_garg_cos, bias_manzini = bias.compute_all_biases(attribute_embeddings, neutral_embeddings, attribute_vocab, neutral_vocab, gender_pair=False, classes=3, A1=None, A2=None, A_list=A_list)
@@ -514,10 +480,6 @@ def submission_bias_tables():
 					raise NotImplementedError
 				bias_bolukbasi, bias_garg_euc, bias_garg_cos, bias_manzini = bias.compute_all_biases(attribute_embeddings, neutral_embeddings, attribute_vocab, neutral_vocab, gender_pair=False, classes=2, A1=A1, A2=A2, A_list=A_list)
 				bias_list.extend([bias_garg_euc, bias_garg_cos, bias_manzini])
-				biases[(bias2short[attribute], bias2short[neutral])].append('g_euc: ' + str(bias_garg_euc))
-				biases[(bias2short[attribute], bias2short[neutral])].append('g_cos: ' + str(bias_garg_cos))
-			biases[(bias2short[attribute], bias2short[neutral])].append('manz: ' + str(bias_manzini))
-
 		bias_list = [str(round(i, 4)) for i in bias_list]
 		print(name2long[model_name] + ' & ' + ' & '.join(bias_list) +' \\\\')
 
@@ -542,7 +504,7 @@ def linearize_embeddings(pickle_f):
 
 
 def main():
-	submission_repr_quality_tables()
+	submission_bias_figures()
 	exit()
 
 

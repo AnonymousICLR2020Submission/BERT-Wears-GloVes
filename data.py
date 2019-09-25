@@ -29,7 +29,7 @@ def fetch_word2vec_embeddings(path_prefix, vocab, pickled=False):
 		filepath = "GoogleNews-vectors-negative300.bin"
 		wv_from_bin = KeyedVectors.load_word2vec_format(path_prefix + filepath, binary=True)
 		output = {w : wv_from_bin[translation_dict.get(w, w)] for w in vocab}
-		# pickle.dump(output, open(pickle_path, 'wb'))
+		pickle.dump(output, open(pickle_path, 'wb'))
 	return output
 
 
